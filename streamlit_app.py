@@ -2,22 +2,28 @@ import streamlit as st
 import pandas as pd
 import os
 
-st.title("Upload Excel and Save as first.xlsx")
+st.title("Upload Excel and Commit to GitHub")
 
-# 1. Upload file
-uploaded_file = st.file_uploader("Chọn file Excel", type=["xlsx"])
+uploaded_file = st.file_uploader("Choose Excel file", type=["xlsx"])
 
 if uploaded_file is not None:
-    # Đọc file Excel
     df = pd.read_excel(uploaded_file)
-    st.write("Nội dung file:")
     st.dataframe(df)
     
-    # 2. Nút lưu file
-    if st.button("Save First"):
-        # Lưu file vào thư mục hiện tại với tên first.xlsx
-        df.to_excel("first.xlsx", index=False)
-        st.success("File đã được lưu thành công với tên first.xlsx")
+    if st.button("Save and Commit"):
+        # Save locally
+        filename = "first.xlsx"
+        df.to_excel(filename, index=False)
+        st.success(f"File saved as {filename}")
+        
+        # Git commit
+        try:
+            subprocess.run(["git", "add", filename], check=True)
+            subprocess.run(["git", "commit", "-m", f"Add {filename}"], check=True)
+            subprocess.run(["git", "push"], check=True)
+            st.success("File committed and pushed to GitHub")
+        except subprocess.CalledProcessError as e:
+            st.error(f"Git error: {e}")
 
 st.set_page_config(page_title="DKP & Dead KPI Tables", layout="centered")
 
