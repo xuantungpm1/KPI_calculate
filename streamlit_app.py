@@ -1,34 +1,50 @@
 import streamlit as st
 import pandas as pd
-import os
 import subprocess
+import os
+from pathlib import Path
 
-st.title("Upload Excel and Commit first.xlsx Only")
+st.title("Upload Excel and Commit first.xlsx from Streamlit")
 
 uploaded_file = st.file_uploader("Choose Excel file", type=["xlsx"])
 
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
     st.dataframe(df)
-    
+
     if st.button("Save and Commit first.xlsx"):
         filename = "first.xlsx"
         df.to_excel(filename, index=False)
-        st.success(f"File saved as {filename}")
+        st.success(f"✅ File saved as {filename}")
 
-        # Check if this specific file has changes
-        result = subprocess.run(["git", "status", "--porcelain", filename], 
-                                capture_output=True, text=True)
-        if result.stdout.strip() == "":
-            st.warning(f"No changes to commit for {filename}.")
-        else:
-            try:
-                subprocess.run(["git", "add", filename], check=True)
-                subprocess.run(["git", "commit", "-m", f"Update {filename}"], check=True)
-                subprocess.run(["git", "push"], check=True)
-                st.success(f"{filename} committed and pushed to GitHub successfully.")
-            except subprocess.CalledProcessError as e:
-                st.error(f"Git error: {e}")
+        try:
+            # Ensure git identity (Streamlit environments often lack this)
+            subprocess.run(["git", "config", "user.name", "streamlit-bot"], check=False)
+            subprocess.run(["git", "config", "user.email", "bot@example.com"], check=False)
+
+            # Check we are in a git repo
+            repo_check = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
+                                        capture_output=True, text=True)
+            if repo_check.returncode != 0:
+                st.error("❌ Not inside a Git repository.")
+            else:
+                # Check if file changed
+                diff = subprocess.run(["git", "status", "--porcelain", filename],
+                                      capture_output=True, text=True)
+                if diff.stdout.strip() == "":
+                    st.warning(f"No changes to commit for {filename}.")
+                else:
+                    subprocess.run(["git", "add", filename], check=True)
+                    subprocess.run(["git", "commit", "-m", f"Update {filename}"], check=True)
+                    st.success(f"✅ {filename} committed successfully!")
+
+                    # Optional: push (requires token or SSH)
+                    # subprocess.run(["git", "push"], check=True)
+                    # st.info("Pushed to GitHub successfully.")
+
+        except subprocess.CalledProcessError as e:
+            st.error(f"❌ Git error: {e}")
+
 
 st.set_page_config(page_title="DKP & Dead KPI Tables", layout="centered")
 
