@@ -1,40 +1,57 @@
 import streamlit as st
 import pandas as pd
-import subprocess
-import os
-from pathlib import Path
+import base64
+import requests
 
-st.title("Upload Excel and Commit first.xlsx to GitHub")
+st.title("Upload Excel to GitHub via API")
 
-# --- Streamlit file uploader ---
+# --- File uploader ---
 uploaded_file = st.file_uploader("Choose Excel file", type=["xlsx"])
 
-if uploaded_file is not None:
+if uploaded_file:
     # Read and display
     df = pd.read_excel(uploaded_file)
     st.dataframe(df)
 
-    if st.button("Save, Commit, and Push to GitHub"):
+    if st.button("Upload to GitHub"):
         filename = "first.xlsx"
+        # Save locally first
         df.to_excel(filename, index=False)
-        st.success(f"✅ File saved as {filename}")
 
-        # --- Set git identity in this environment ---
-        subprocess.run(["git", "config", "user.name", "streamlit-bot"], check=False)
-        subprocess.run(["git", "config", "user.email", "bot@example.com"], check=False)
+        # Read file content as base64
+        with open(filename, "rb") as f:
+            content = f.read()
+        b64_content = base64.b64encode(content).decode()
 
-        # --- Add & commit only first.xlsx if changed ---
-        diff = subprocess.run(["git", "status", "--porcelain", filename],
-                              capture_output=True, text=True)
-        if diff.stdout.strip() == "":
-            st.warning(f"No changes to commit for {filename}.")
+        # Load GitHub info from secrets
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+            user = st.secrets["GITHUB_USER"]
+            repo = st.secrets["REPO_NAME"]
+        except KeyError:
+            st.error("❌ GitHub token or repo info missing in st.secrets")
+            st.stop()
+
+        # GitHub API URL for the file in the main branch
+        url = f"https://api.github.com/repos/{user}/{repo}/contents/{filename}"
+        headers = {"Authorization": f"token {token}"}
+
+        # Check if file exists to get SHA
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            sha = r.json()["sha"]
+            message = "Update first.xlsx"
+            data = {"message": message, "content": b64_content, "sha": sha, "branch": "main"}
         else:
-            try:
-                subprocess.run(["git", "add", filename], check=True)
-                subprocess.run(["git", "commit", "-m", f"Update {filename}"], check=True)
-                st.success(f"✅ {filename} committed successfully!")
-            except subprocess.CalledProcessError as e:
-                st.error(f"❌ Git commit error: {e}")
+            # File doesn't exist yet
+            data = {"message": "Add first.xlsx", "content": b64_content, "branch": "main"}
+
+        # PUT request to create or update file
+        response = requests.put(url, headers=headers, json=data)
+        if response.status_code in [200, 201]:
+            st.success("✅ File uploaded to GitHub successfully!")
+        else:
+            st.error(f"❌ GitHub API error: {response.status_code}\n{response.text}")
 
         # --- Push to GitHub using token from secrets ---
         try:
