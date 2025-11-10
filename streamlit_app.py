@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import subprocess
 
-st.title("Upload Excel and Commit to GitHub")
+st.title("Upload Excel and Commit first.xlsx Only")
 
 uploaded_file = st.file_uploader("Choose Excel file", type=["xlsx"])
 
@@ -11,20 +11,24 @@ if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
     st.dataframe(df)
     
-    if st.button("Save and Commit"):
-        # Save locally
+    if st.button("Save and Commit first.xlsx"):
         filename = "first.xlsx"
         df.to_excel(filename, index=False)
         st.success(f"File saved as {filename}")
-        
-        # Git commit
-        try:
-            subprocess.run(["git", "add", filename], check=True)
-            subprocess.run(["git", "commit", "-m", f"Add {filename}"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            st.success("File committed and pushed to GitHub")
-        except subprocess.CalledProcessError as e:
-            st.error(f"Git error: {e}")
+
+        # Check if this specific file has changes
+        result = subprocess.run(["git", "status", "--porcelain", filename], 
+                                capture_output=True, text=True)
+        if result.stdout.strip() == "":
+            st.warning(f"No changes to commit for {filename}.")
+        else:
+            try:
+                subprocess.run(["git", "add", filename], check=True)
+                subprocess.run(["git", "commit", "-m", f"Update {filename}"], check=True)
+                subprocess.run(["git", "push"], check=True)
+                st.success(f"{filename} committed and pushed to GitHub successfully.")
+            except subprocess.CalledProcessError as e:
+                st.error(f"Git error: {e}")
 
 st.set_page_config(page_title="DKP & Dead KPI Tables", layout="centered")
 
