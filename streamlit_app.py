@@ -39,8 +39,8 @@ if uploaded_file is not None:
                     st.success(f"✅ {filename} committed successfully!")
 
                     # Optional: push (requires token or SSH)
-                    # subprocess.run(["git", "push"], check=True)
-                    # st.info("Pushed to GitHub successfully.")
+                    subprocess.run(["git", "push"], check=True)
+                    st.info("Pushed to GitHub successfully.")
 
         except subprocess.CalledProcessError as e:
             st.error(f"❌ Git error: {e}")
