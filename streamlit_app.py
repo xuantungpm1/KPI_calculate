@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import base64
 import requests
+import subprocess
 
 st.title("Upload Excel to GitHub via API")
 
