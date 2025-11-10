@@ -2,30 +2,22 @@ import streamlit as st
 import pandas as pd
 import os
 
-st.set_page_config(page_title="Excel Viewer", layout="wide")
+st.title("Upload Excel and Save as first.xlsx")
 
-st.title("📊 Excel File Viewer")
-
-# Upload Excel file
-uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
+# 1. Upload file
+uploaded_file = st.file_uploader("Chọn file Excel", type=["xlsx"])
 
 if uploaded_file is not None:
-    try:
-        # Read Excel file
-        df = pd.read_excel(uploaded_file)
-        
-        st.success("✅ File loaded successfully!")
-        
-        # Display column and row info
-        st.write(f"**Columns:** {list(df.columns)}")
-        st.write(f"**Total Rows:** {len(df)}")
-
-        # Display data
-        st.dataframe(df, use_container_width=True)
-    except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
-else:
-    st.info("👆 Please upload an Excel file to begin.")
+    # Đọc file Excel
+    df = pd.read_excel(uploaded_file)
+    st.write("Nội dung file:")
+    st.dataframe(df)
+    
+    # 2. Nút lưu file
+    if st.button("Save First"):
+        # Lưu file vào thư mục hiện tại với tên first.xlsx
+        df.to_excel("first.xlsx", index=False)
+        st.success("File đã được lưu thành công với tên first.xlsx")
 
 st.set_page_config(page_title="DKP & Dead KPI Tables", layout="centered")
 
