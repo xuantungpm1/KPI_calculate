@@ -4,70 +4,35 @@ import base64
 import requests
 import subprocess
 
-st.title("Upload Excel to GitHub via API")
+# Set folder for saving uploaded files
+SAVE_DIR = "uploaded_data"
+os.makedirs(SAVE_DIR, exist_ok=True)
 
-# --- File uploader ---
-uploaded_file = st.file_uploader("Choose Excel file", type=["xlsx"])
+st.title("📊 Upload Excel with 'first' and 'current' sheets")
+
+uploaded_file = st.file_uploader("Upload your Excel file (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
-    # Read and display
-    df = pd.read_excel(uploaded_file)
-    st.dataframe(df)
+    # Save the uploaded file locally
+    save_path = os.path.join(SAVE_DIR, "first.xlsx")
+    with open(save_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    st.success(f"✅ File saved to: {save_path}")
 
-    if st.button("Upload to GitHub"):
-        filename = "first.xlsx"
-        # Save locally first
-        df.to_excel(filename, index=False)
+    try:
+        # Read the two required sheets
+        df_first = pd.read_excel(uploaded_file, sheet_name="first")
+        df_current = pd.read_excel(uploaded_file, sheet_name="current")
 
-        # Read file content as base64
-        with open(filename, "rb") as f:
-            content = f.read()
-        b64_content = base64.b64encode(content).decode()
+        st.subheader("📄 Preview - 'first' Sheet")
+        st.dataframe(df_first)
 
-        # Load GitHub info from secrets
-        try:
-            token = st.secrets["GITHUB_TOKEN"]
-            user = st.secrets["GITHUB_USER"]
-            repo = st.secrets["REPO_NAME"]
-        except KeyError:
-            st.error("❌ GitHub token or repo info missing in st.secrets")
-            st.stop()
+        st.subheader("📄 Preview - 'current' Sheet")
+        st.dataframe(df_current)
 
-        # GitHub API URL for the file in the main branch
-        url = f"https://api.github.com/repos/{user}/{repo}/contents/{filename}"
-        headers = {"Authorization": f"token {token}"}
-
-        # Check if file exists to get SHA
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            sha = r.json()["sha"]
-            message = "Update first.xlsx"
-            data = {"message": message, "content": b64_content, "sha": sha, "branch": "main"}
-        else:
-            # File doesn't exist yet
-            data = {"message": "Add first.xlsx", "content": b64_content, "branch": "main"}
-
-        # PUT request to create or update file
-        response = requests.put(url, headers=headers, json=data)
-        if response.status_code in [200, 201]:
-            st.success("✅ File uploaded to GitHub successfully!")
-        else:
-            st.error(f"❌ GitHub API error: {response.status_code}\n{response.text}")
-
-        # --- Push to GitHub using token from secrets ---
-        try:
-            token = st.secrets["GITHUB_TOKEN"]
-            user = st.secrets["GITHUB_USER"]
-            repo = st.secrets["REPO_NAME"]
-
-            repo_url = f"https://{token}@github.com/{user}/{repo}.git"
-
-            subprocess.run(["git", "push", repo_url, "HEAD:main"], check=True)
-            st.success("✅ Pushed to GitHub successfully!")
-        except subprocess.CalledProcessError as e:
-            st.error(f"❌ Git push error: {e}")
-        except KeyError:
-            st.error("❌ GitHub token or repo info missing in st.secrets")
+    except ValueError as e:
+        st.error("❌ Error: Missing 'first' or 'current' sheet.")
+        st.info("Please make sure the Excel file has both sheets named exactly: 'first' and 'current'.")
 
 
 st.set_page_config(page_title="DKP & Dead KPI Tables", layout="centered")
