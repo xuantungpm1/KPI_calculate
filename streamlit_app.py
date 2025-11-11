@@ -5,6 +5,24 @@ import requests
 import subprocess
 import os
 
+# ==========================================
+# 🧩 Common Helper Functions
+# ==========================================
+def load_table(file_name):
+    """Load Excel to list of dicts"""
+    if os.path.exists(file_name):
+        return pd.read_excel(file_name).to_dict("records")
+    return []
+
+def save_table(file_name, data):
+    """Save list of dicts to Excel"""
+    pd.DataFrame(data).to_excel(file_name, index=False)
+
+def delete_row(data_list, index):
+    """Remove one row"""
+    if 0 <= index < len(data_list):
+        data_list.pop(index)
+
 # Set folder for saving uploaded files
 SAVE_DIR = "uploaded_data"
 os.makedirs(SAVE_DIR, exist_ok=True)
