@@ -3,6 +3,7 @@ import pandas as pd
 import base64
 import requests
 import subprocess
+import os
 
 # Set folder for saving uploaded files
 SAVE_DIR = "uploaded_data"
