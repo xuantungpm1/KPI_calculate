@@ -36,28 +36,6 @@ if uploaded_file:
         st.info("Please make sure the Excel file has both sheets named exactly: 'first' and 'current'.")
 
 
-st.set_page_config(page_title="DKP & Dead KPI Tables", layout="centered")
-
-st.title("⚔️ DKP & 💀 Dead KPI Manager")
-
-# ==========================================
-# 🧩 Common Helper Functions
-# ==========================================
-def load_table(file_name):
-    """Load Excel to list of dicts"""
-    if os.path.exists(file_name):
-        return pd.read_excel(file_name).to_dict("records")
-    return []
-
-def save_table(file_name, data):
-    """Save list of dicts to Excel"""
-    pd.DataFrame(data).to_excel(file_name, index=False)
-
-def delete_row(data_list, index):
-    """Remove one row"""
-    if 0 <= index < len(data_list):
-        data_list.pop(index)
-
 # ==========================================
 # 💀 DEAD KPI TABLE
 # ==========================================
@@ -67,7 +45,15 @@ DEAD_FILE = "dead_table.xlsx"
 if "dead_data" not in st.session_state:
     st.session_state.dead_data = load_table(DEAD_FILE)
 
-# --- Input form ---
+# --- Upload Existing Dead Table ---
+uploaded_dead = st.file_uploader("📤 Upload Dead Table (.xlsx)", type=["xlsx"], key="upload_dead")
+if uploaded_dead is not None:
+    df_uploaded = pd.read_excel(uploaded_dead)
+    st.session_state.dead_data = df_uploaded.to_dict("records")
+    save_table(DEAD_FILE, st.session_state.dead_data)
+    st.success("✅ Dead Table loaded from your file!")
+
+# --- Input Form ---
 with st.form("dead_form", clear_on_submit=True):
     power_start = st.number_input("Power Start (Dead)", min_value=0, step=1_000_000, format="%d")
     power_end = st.number_input("Power End (Dead)", min_value=0, step=1_000_000, format="%d")
@@ -83,13 +69,21 @@ with st.form("dead_form", clear_on_submit=True):
         save_table(DEAD_FILE, st.session_state.dead_data)
         st.success("✅ Added to Dead Table!")
 
-# --- Table Display + Actions ---
+# --- Display + Actions ---
 if st.session_state.dead_data:
     dead_df = pd.DataFrame(st.session_state.dead_data)
     dead_df.index += 1
     st.subheader("📊 Dead Rate Table")
 
-    # Xóa toàn bộ
+    # 💾 Download current Dead Table
+    st.download_button(
+        label="💾 Download Dead Table (.xlsx)",
+        data=dead_df.to_excel(index=False, engine="openpyxl"),
+        file_name="dead_table.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # 🗑️ Clear All
     if st.button("🗑️ Xóa toàn bộ Dead Table"):
         st.session_state.dead_data = []
         if os.path.exists(DEAD_FILE):
@@ -97,7 +91,7 @@ if st.session_state.dead_data:
         st.success("✅ Dead Table cleared.")
         st.stop()
 
-    # Hiển thị bảng với nút xóa từng dòng
+    # 🔸 Display rows + delete each
     for i, row in enumerate(st.session_state.dead_data):
         cols = st.columns([3, 3, 3, 1])
         cols[0].write(f"**Start:** {row['POWER_START']:,}")
@@ -120,7 +114,15 @@ DKP_FILE = "dkp_table.xlsx"
 if "dkp_data" not in st.session_state:
     st.session_state.dkp_data = load_table(DKP_FILE)
 
-# --- Input form ---
+# --- Upload Existing DKP Table ---
+uploaded_dkp = st.file_uploader("📤 Upload DKP Table (.xlsx)", type=["xlsx"], key="upload_dkp")
+if uploaded_dkp is not None:
+    df_uploaded = pd.read_excel(uploaded_dkp)
+    st.session_state.dkp_data = df_uploaded.to_dict("records")
+    save_table(DKP_FILE, st.session_state.dkp_data)
+    st.success("✅ DKP Table loaded from your file!")
+
+# --- Input Form ---
 with st.form("dkp_form", clear_on_submit=True):
     power_start = st.number_input("Power Start (DKP)", min_value=0, step=1_000_000, format="%d")
     power_end = st.number_input("Power End (DKP)", min_value=0, step=1_000_000, format="%d")
@@ -136,13 +138,21 @@ with st.form("dkp_form", clear_on_submit=True):
         save_table(DKP_FILE, st.session_state.dkp_data)
         st.success("✅ Added to DKP Table!")
 
-# --- Table Display + Actions ---
+# --- Display + Actions ---
 if st.session_state.dkp_data:
     dkp_df = pd.DataFrame(st.session_state.dkp_data)
     dkp_df.index += 1
     st.subheader("📊 Power DKP Table")
 
-    # Xóa toàn bộ
+    # 💾 Download current DKP Table
+    st.download_button(
+        label="💾 Download DKP Table (.xlsx)",
+        data=dkp_df.to_excel(index=False, engine="openpyxl"),
+        file_name="dkp_table.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # 🗑️ Clear All
     if st.button("🗑️ Xóa toàn bộ DKP Table"):
         st.session_state.dkp_data = []
         if os.path.exists(DKP_FILE):
@@ -150,7 +160,7 @@ if st.session_state.dkp_data:
         st.success("✅ DKP Table cleared.")
         st.stop()
 
-    # Hiển thị bảng với nút xóa từng dòng
+    # 🔸 Display rows + delete each
     for i, row in enumerate(st.session_state.dkp_data):
         cols = st.columns([3, 3, 3, 1])
         cols[0].write(f"**Start:** {row['POWER_START']:,}")
@@ -163,32 +173,3 @@ if st.session_state.dkp_data:
 else:
     st.info("📝 No DKP data yet.")
 
-# ==========================================
-# 🔍 Lookup Tool
-# ==========================================
-st.markdown("---")
-st.header("🔍 Lookup DKP / Dead Rate by Power")
-
-power_value = st.number_input("Enter current Power:", min_value=0, step=1_000_000, format="%d")
-
-if st.button("🔎 Calculate Results"):
-    result_msg = ""
-
-    # DKP lookup
-    if st.session_state.dkp_data:
-        match = [r for r in st.session_state.dkp_data if r["POWER_START"] <= power_value < r["POWER_END"]]
-        if match:
-            result_msg += f"⚔️ DKP: **{match[0]['DKP']:,}**\n"
-        else:
-            result_msg += "⚔️ DKP: Not found\n"
-
-    # Dead lookup
-    if st.session_state.dead_data:
-        match = [r for r in st.session_state.dead_data if r["POWER_START"] <= power_value < r["POWER_END"]]
-        if match:
-            result_msg += f"💀 Dead DKP: **{match[0]['DEAD_DKP']:,}**"
-        else:
-            result_msg += "💀 Dead DKP: Not found"
-
-    if result_msg:
-        st.success(result_msg)
