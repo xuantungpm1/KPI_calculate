@@ -19,9 +19,15 @@ def get_dkp_target(power_value, df_dkp):
 
 def get_point(type, df_point):
     for _, row in df_point.iterrows():
-        if row['Type'] == type:  # ← fix: use ==, not "is"
+        if row['Type'] == type:
             return row['Points']
     return 0
+
+# --- Safe conversion to gspread-compatible list of lists ---
+def df_to_gspread(df: pd.DataFrame):
+    df_safe = df.fillna("")  # Replace NaN with empty string
+    # Convert all numpy types to native Python types (str/int/float)
+    return [df_safe.columns.tolist()] + df_safe.astype(str).values.tolist()
 
 # --- Folder setup ---
 SAVE_DIR = "uploaded_data"
@@ -57,30 +63,30 @@ if uploaded_file:
         if "Power" not in df_upload.columns:
             st.error("❌ Uploaded file must have a 'Power' column.")
         else:
+            # --- Compute targets and scores ---
             df_upload["Target DKP"] = df_upload["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
             df_upload["Target Deads"] = df_upload["Power"].apply(lambda x: get_dead_target(x, df_dead))
-        
-        df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
-        df_upload["Score"] = (df_upload["T4 Kills gained"] * get_point("T4", df_point) + 
-                                df_upload["T5 Kills gained"] * get_point("T5", df_point) + 
-                                df_upload["Deads gained"] * get_point("Dead", df_point))
-        df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
-        df_upload["Rank"] = df_upload["Score"].rank(ascending=False, method="min").astype(int)
+            df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
+            df_upload["Score"] = (
+                df_upload["T4 Kills gained"] * get_point("T4", df_point) +
+                df_upload["T5 Kills gained"] * get_point("T5", df_point) +
+                df_upload["Deads gained"] * get_point("Dead", df_point)
+            )
+            df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
+            df_upload["Rank"] = df_upload["Score"].rank(ascending=False, method="min").astype(int)
 
-        # --- Prepare target sheet ---
-        sheet_name = "data"
-        try:
-            sheet = spreadsheet.worksheet(sheet_name)
-            # optional: clear old data before writing new
-            sheet.clear()
-        except gspread.exceptions.WorksheetNotFound:
-            sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+            # --- Prepare target sheet ---
+            sheet_name = "data"
+            try:
+                sheet = spreadsheet.worksheet(sheet_name)
+                sheet.clear()  # Optional: clear old data before writing
+            except gspread.exceptions.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
 
-        # --- Write DataFrame to sheet ---
-        # Convert DataFrame to list of lists (including header)
-        data_to_write = [df_upload.columns.values.tolist()] + df_upload.values.tolist()
-        sheet.update(data_to_write)
+            # --- Write DataFrame safely ---
+            data_to_write = df_to_gspread(df_upload)
+            sheet.update(data_to_write)
 
-        st.success(f"✅ Uploaded data copied successfully to Google Sheet tab '{sheet_name}'!")
+            st.success(f"✅ Uploaded data copied successfully to Google Sheet tab '{sheet_name}'!")
     else:
         st.error("The uploaded Excel file does not contain a sheet named 'current'.")
