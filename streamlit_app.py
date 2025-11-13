@@ -48,9 +48,14 @@ if uploaded_file:
     df_point = pd.DataFrame(spreadsheet.worksheet("point_table").get_all_records())
 
     # --- Read uploaded Excel ---
-    df_upload = pd.read_excel(uploaded_file)
-    st.subheader("📄 Uploaded Data Preview")
-    st.dataframe(df_upload)
+    xls = pd.ExcelFile(uploaded_file)
+    if "current" in xls.sheet_names:
+        df_upload = pd.read_excel(uploaded_file, sheet_name="current")
+        st.subheader("📄 Uploaded Data Preview")
+        st.dataframe(df_upload)
+    else:
+        st.error("The uploaded Excel file does not contain a sheet named 'current'.")
+        return
 
     if "Power" not in df_upload.columns:
         st.error("❌ Uploaded file must have a 'Power' column.")
