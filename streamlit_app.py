@@ -65,7 +65,7 @@ if uploaded_file:
                                 df_upload["T5 Kills gained"] * get_point("T5", df_point) + 
                                 df_upload["Deads gained"] * get_point("Dead", df_point))
         df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
-        df_upload["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
+        df_upload["Rank"] = df_upload["Score"].rank(ascending=False, method="min").astype(int)
 
         # --- Prepare target sheet ---
         sheet_name = "data"
