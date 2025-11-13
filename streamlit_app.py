@@ -1,193 +1,80 @@
+import os
 import streamlit as st
 import pandas as pd
-import base64
-import requests
-import subprocess
-import os
+import gspread
+from google.oauth2.service_account import Credentials
 
-# ==========================================
-# 🧩 Common Helper Functions
-# ==========================================
-def load_table(file_name):
-    """Load Excel to list of dicts"""
-    if os.path.exists(file_name):
-        return pd.read_excel(file_name).to_dict("records")
-    return []
+# --- Helper functions ---
+def get_dead_target(power_value, df_dead):
+    for _, row in df_dead.iterrows():
+        if row["Power_start"] <= power_value <= row["Power_end"]:
+            return row["Target"]
+    return 0
 
-def save_table(file_name, data):
-    """Save list of dicts to Excel"""
-    pd.DataFrame(data).to_excel(file_name, index=False)
+def get_dkp_target(power_value, df_dkp):
+    for _, row in df_dkp.iterrows():
+        if row["Power_start"] <= power_value <= row["Power_end"]:
+            return power_value * (row["Target"] / 100)
+    return 0
 
-def delete_row(data_list, index):
-    """Remove one row"""
-    if 0 <= index < len(data_list):
-        data_list.pop(index)
+def get_point(type, df_point):
+    for _, row in df_point.iterrows():
+        if row['Type'] == type:  # ← fix: use ==, not "is"
+            return row['Points']
+    return 0
 
-# Set folder for saving uploaded files
+# --- Folder setup ---
 SAVE_DIR = "uploaded_data"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-st.title("📊 Upload Excel with 'first' and 'current' sheets")
+st.title("📊 Upload data file and copy to Google Sheet")
 
-uploaded_file = st.file_uploader("Upload your Excel file (.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload your data file (KD3270_data.xlsx)", type=["xlsx"])
 
 if uploaded_file:
-    # Save the uploaded file locally
-    save_path = os.path.join(SAVE_DIR, "first.xlsx")
-    with open(save_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success(f"✅ File saved to: {save_path}")
+    # --- Google auth ---
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scope
+    )
+    client = gspread.authorize(creds)
 
+    spreadsheet = client.open("MyTestSheet")
+
+    # --- Read parameter tables ---
+    df_dead = pd.DataFrame(spreadsheet.worksheet("dead_table").get_all_records())
+    df_dkp = pd.DataFrame(spreadsheet.worksheet("dkp_table").get_all_records())
+    df_point = pd.DataFrame(spreadsheet.worksheet("point_table").get_all_records())
+
+    # --- Read uploaded Excel ---
+    df_upload = pd.read_excel(uploaded_file)
+    st.subheader("📄 Uploaded Data Preview")
+    st.dataframe(df_upload)
+
+    if "Power" not in df_upload.columns:
+        st.error("❌ Uploaded file must have a 'Power' column.")
+    else:
+        df_upload["Target DKP"] = df_upload["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
+        df_upload["Target Deads"] = df_upload["Power"].apply(lambda x: get_dead_target(x, df_dead))
+    
+    df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
+    df_upload["Score"] = (df_upload["T4 kill gained"] * df_point["T4"] + df_upload["T5 kill gained"] * df_point["T5"] + df_upload["Dead gained"] * df_point["Dead"])
+    df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
+    df_upload["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
+
+    # --- Prepare target sheet ---
+    sheet_name = "data"
     try:
-        # Read the two required sheets
-        df_first = pd.read_excel(uploaded_file, sheet_name="first")
-        df_current = pd.read_excel(uploaded_file, sheet_name="current")
+        sheet = spreadsheet.worksheet(sheet_name)
+        # optional: clear old data before writing new
+        sheet.clear()
+    except gspread.exceptions.WorksheetNotFound:
+        sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
 
-        st.subheader("📄 Preview - 'first' Sheet")
-        st.dataframe(df_first)
+    # --- Write DataFrame to sheet ---
+    # Convert DataFrame to list of lists (including header)
+    data_to_write = [df_upload.columns.values.tolist()] + df_upload.values.tolist()
+    sheet.update(data_to_write)
 
-        st.subheader("📄 Preview - 'current' Sheet")
-        st.dataframe(df_current)
-
-    except ValueError as e:
-        st.error("❌ Error: Missing 'first' or 'current' sheet.")
-        st.info("Please make sure the Excel file has both sheets named exactly: 'first' and 'current'.")
-
-
-# ==========================================
-# 💀 DEAD KPI TABLE
-# ==========================================
-st.header("💀 Dead Rate Table")
-
-DEAD_FILE = "dead_table.xlsx"
-if "dead_data" not in st.session_state:
-    st.session_state.dead_data = load_table(DEAD_FILE)
-
-# --- Upload Existing Dead Table ---
-uploaded_dead = st.file_uploader("📤 Upload Dead Table (.xlsx)", type=["xlsx"], key="upload_dead")
-if uploaded_dead is not None:
-    df_uploaded = pd.read_excel(uploaded_dead)
-    st.session_state.dead_data = df_uploaded.to_dict("records")
-    save_table(DEAD_FILE, st.session_state.dead_data)
-    st.success("✅ Dead Table loaded from your file!")
-
-# --- Input Form ---
-with st.form("dead_form", clear_on_submit=True):
-    power_start = st.number_input("Power Start (Dead)", min_value=0, step=1_000_000, format="%d")
-    power_end = st.number_input("Power End (Dead)", min_value=0, step=1_000_000, format="%d")
-    dead_dkp = st.number_input("Dead DKP", min_value=0, step=50_000, format="%d")
-    submitted_dead = st.form_submit_button("➕ Add Dead Row")
-
-    if submitted_dead and power_end > power_start:
-        st.session_state.dead_data.append({
-            "POWER_START": power_start,
-            "POWER_END": power_end,
-            "DEAD_DKP": dead_dkp
-        })
-        save_table(DEAD_FILE, st.session_state.dead_data)
-        st.success("✅ Added to Dead Table!")
-
-# --- Display + Actions ---
-if st.session_state.dead_data:
-    dead_df = pd.DataFrame(st.session_state.dead_data)
-    dead_df.index += 1
-    st.subheader("📊 Dead Rate Table")
-
-    # 💾 Download current Dead Table
-    st.download_button(
-        label="💾 Download Dead Table (.xlsx)",
-        data=dead_df.to_excel(index=False, engine="openpyxl"),
-        file_name="dead_table.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # 🗑️ Clear All
-    if st.button("🗑️ Xóa toàn bộ Dead Table"):
-        st.session_state.dead_data = []
-        if os.path.exists(DEAD_FILE):
-            os.remove(DEAD_FILE)
-        st.success("✅ Dead Table cleared.")
-        st.stop()
-
-    # 🔸 Display rows + delete each
-    for i, row in enumerate(st.session_state.dead_data):
-        cols = st.columns([3, 3, 3, 1])
-        cols[0].write(f"**Start:** {row['POWER_START']:,}")
-        cols[1].write(f"**End:** {row['POWER_END']:,}")
-        cols[2].write(f"**Dead DKP:** {row['DEAD_DKP']:,}")
-        if cols[3].button("❌", key=f"dead_del_{i}"):
-            delete_row(st.session_state.dead_data, i)
-            save_table(DEAD_FILE, st.session_state.dead_data)
-            st.experimental_rerun()
-else:
-    st.info("📝 No Dead data yet.")
-
-# ==========================================
-# ⚔️ DKP POWER TABLE
-# ==========================================
-st.markdown("---")
-st.header("⚔️ Power DKP Table")
-
-DKP_FILE = "dkp_table.xlsx"
-if "dkp_data" not in st.session_state:
-    st.session_state.dkp_data = load_table(DKP_FILE)
-
-# --- Upload Existing DKP Table ---
-uploaded_dkp = st.file_uploader("📤 Upload DKP Table (.xlsx)", type=["xlsx"], key="upload_dkp")
-if uploaded_dkp is not None:
-    df_uploaded = pd.read_excel(uploaded_dkp)
-    st.session_state.dkp_data = df_uploaded.to_dict("records")
-    save_table(DKP_FILE, st.session_state.dkp_data)
-    st.success("✅ DKP Table loaded from your file!")
-
-# --- Input Form ---
-with st.form("dkp_form", clear_on_submit=True):
-    power_start = st.number_input("Power Start (DKP)", min_value=0, step=1_000_000, format="%d")
-    power_end = st.number_input("Power End (DKP)", min_value=0, step=1_000_000, format="%d")
-    dkp_value = st.number_input("DKP Value", min_value=0, step=50_000, format="%d")
-    submitted_dkp = st.form_submit_button("➕ Add DKP Row")
-
-    if submitted_dkp and power_end > power_start:
-        st.session_state.dkp_data.append({
-            "POWER_START": power_start,
-            "POWER_END": power_end,
-            "DKP": dkp_value
-        })
-        save_table(DKP_FILE, st.session_state.dkp_data)
-        st.success("✅ Added to DKP Table!")
-
-# --- Display + Actions ---
-if st.session_state.dkp_data:
-    dkp_df = pd.DataFrame(st.session_state.dkp_data)
-    dkp_df.index += 1
-    st.subheader("📊 Power DKP Table")
-
-    # 💾 Download current DKP Table
-    st.download_button(
-        label="💾 Download DKP Table (.xlsx)",
-        data=dkp_df.to_excel(index=False, engine="openpyxl"),
-        file_name="dkp_table.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # 🗑️ Clear All
-    if st.button("🗑️ Xóa toàn bộ DKP Table"):
-        st.session_state.dkp_data = []
-        if os.path.exists(DKP_FILE):
-            os.remove(DKP_FILE)
-        st.success("✅ DKP Table cleared.")
-        st.stop()
-
-    # 🔸 Display rows + delete each
-    for i, row in enumerate(st.session_state.dkp_data):
-        cols = st.columns([3, 3, 3, 1])
-        cols[0].write(f"**Start:** {row['POWER_START']:,}")
-        cols[1].write(f"**End:** {row['POWER_END']:,}")
-        cols[2].write(f"**DKP:** {row['DKP']:,}")
-        if cols[3].button("❌", key=f"dkp_del_{i}"):
-            delete_row(st.session_state.dkp_data, i)
-            save_table(DKP_FILE, st.session_state.dkp_data)
-            st.experimental_rerun()
-else:
-    st.info("📝 No DKP data yet.")
-
+    st.success(f"✅ Uploaded data copied successfully to Google Sheet tab '{sheet_name}'!")
