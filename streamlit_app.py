@@ -61,7 +61,7 @@ if uploaded_file:
             df_upload["Target Deads"] = df_upload["Power"].apply(lambda x: get_dead_target(x, df_dead))
         
         df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
-        df_upload["Score"] = (df_upload["T4 kill gained"] * df_point["T4"] + df_upload["T5 kill gained"] * df_point["T5"] + df_upload["Dead gained"] * df_point["Dead"])
+        df_upload["Score"] = (df_upload["T4 Kills gained"] * df_point["T4"] + df_upload["T5 Kills gained"] * df_point["T5"] + df_upload["Deads gained"] * df_point["Dead"])
         df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
         df_upload["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
 
