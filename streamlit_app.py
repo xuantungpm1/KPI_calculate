@@ -14,7 +14,7 @@ def get_dead_target(power_value, df_dead):
 def get_dkp_target(power_value, df_dkp):
     for _, row in df_dkp.iterrows():
         if row["Power_start"] <= power_value <= row["Power_end"]:
-            return power_value * (row["Target"] / 100)
+            return (power_value * (row["Target"] / 100)).round(2)
     return 0
 
 def get_point(type, df_point):
