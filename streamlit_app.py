@@ -53,33 +53,32 @@ if uploaded_file:
         df_upload = pd.read_excel(uploaded_file, sheet_name="current")
         st.subheader("📄 Uploaded Data Preview")
         st.dataframe(df_upload)
+
+        if "Power" not in df_upload.columns:
+            st.error("❌ Uploaded file must have a 'Power' column.")
+        else:
+            df_upload["Target DKP"] = df_upload["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
+            df_upload["Target Deads"] = df_upload["Power"].apply(lambda x: get_dead_target(x, df_dead))
+        
+        df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
+        df_upload["Score"] = (df_upload["T4 kill gained"] * df_point["T4"] + df_upload["T5 kill gained"] * df_point["T5"] + df_upload["Dead gained"] * df_point["Dead"])
+        df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
+        df_upload["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
+
+        # --- Prepare target sheet ---
+        sheet_name = "data"
+        try:
+            sheet = spreadsheet.worksheet(sheet_name)
+            # optional: clear old data before writing new
+            sheet.clear()
+        except gspread.exceptions.WorksheetNotFound:
+            sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+
+        # --- Write DataFrame to sheet ---
+        # Convert DataFrame to list of lists (including header)
+        data_to_write = [df_upload.columns.values.tolist()] + df_upload.values.tolist()
+        sheet.update(data_to_write)
+
+        st.success(f"✅ Uploaded data copied successfully to Google Sheet tab '{sheet_name}'!")
     else:
         st.error("The uploaded Excel file does not contain a sheet named 'current'.")
-        return
-
-    if "Power" not in df_upload.columns:
-        st.error("❌ Uploaded file must have a 'Power' column.")
-    else:
-        df_upload["Target DKP"] = df_upload["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
-        df_upload["Target Deads"] = df_upload["Power"].apply(lambda x: get_dead_target(x, df_dead))
-    
-    df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
-    df_upload["Score"] = (df_upload["T4 kill gained"] * df_point["T4"] + df_upload["T5 kill gained"] * df_point["T5"] + df_upload["Dead gained"] * df_point["Dead"])
-    df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
-    df_upload["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
-
-    # --- Prepare target sheet ---
-    sheet_name = "data"
-    try:
-        sheet = spreadsheet.worksheet(sheet_name)
-        # optional: clear old data before writing new
-        sheet.clear()
-    except gspread.exceptions.WorksheetNotFound:
-        sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
-
-    # --- Write DataFrame to sheet ---
-    # Convert DataFrame to list of lists (including header)
-    data_to_write = [df_upload.columns.values.tolist()] + df_upload.values.tolist()
-    sheet.update(data_to_write)
-
-    st.success(f"✅ Uploaded data copied successfully to Google Sheet tab '{sheet_name}'!")
