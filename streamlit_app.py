@@ -40,7 +40,7 @@ if uploaded_file:
     )
     client = gspread.authorize(creds)
 
-    spreadsheet = client.open("MyTestSheet")
+    spreadsheet = client.open("KD3270 data sheet")
 
     # --- Read parameter tables ---
     df_dead = pd.DataFrame(spreadsheet.worksheet("dead_table").get_all_records())
