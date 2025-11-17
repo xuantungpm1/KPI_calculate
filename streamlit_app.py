@@ -117,14 +117,28 @@ if uploaded_file:
                 sheet_data = pd.DataFrame(sheet.get_all_records())
                 sheet_data["ID"] = sheet_data["ID"].astype(str).str.strip()
 
-                for idx, row in df_upload.iterrows():
-                    uid = row["ID"]
-                    if uid in sheet_data["ID"].values:
-                        # Find the row index in the sheet (1-based for Google Sheets)
-                        sheet_row = sheet_data.index[sheet_data["ID"] == uid][0] + 2  # +2 because header is row 1
-                        for col_name in columns_to_update:
-                            col_index = sheet_data.columns.get_loc(col_name) + 1  # 1-based
-                            sheet.update_cell(sheet_row, col_index, row[col_name])
+                for col_name in columns_to_update:
+                    col_index = sheet_data.columns.get_loc(col_name) + 1  # 1-based
+                    values_to_update = []
+
+                    for idx, row in sheet_data.iterrows():
+                        uid = row["ID"]
+                        if uid in df_upload["ID"].values:
+                            # Get the new value from uploaded file
+                            new_val = df_upload.loc[df_upload["ID"] == uid, col_name].values[0]
+                            values_to_update.append([new_val])
+                        else:
+                            # Keep old value
+                            values_to_update.append([row[col_name]])
+
+                    # Determine range (column letter + rows)
+                    col_letter = gspread.utils.rowcol_to_a1(1, col_index)[:-1]
+                    start_row = 2
+                    end_row = start_row + len(values_to_update) - 1
+                    cell_range = f"{col_letter}{start_row}:{col_letter}{end_row}"
+
+                    # Update entire column at once
+                    sheet.update(cell_range, values_to_update)
 
                 try:
                     sheet = spreadsheet.worksheet("data")
