@@ -114,18 +114,17 @@ if uploaded_file:
                 df_upload["ID"] = df_upload["ID"].astype(str)
 
                 df_updated = df_old.copy()
-                updated_ids = []
+
+                columns_to_update = ['Deads gained', 'KP gained', 'T5 Kills gained', 'T4 Kills gained']  # DataFrame column names
 
                 for idx, row in df_upload.iterrows():
                     uid = row["ID"]
                     if uid in df_updated["ID"].values:
-                        df_updated.loc[df_updated["ID"] == uid, df_upload.columns] = row[df_upload.columns]
-                        updated_ids.append(uid)
+                        df_updated.loc[df_updated["ID"] == uid, columns_to_update] = row[columns_to_update]
                 
                 sheet.update(df_to_gspread(df_updated))
                 st.success("✅ Existing IDs updated")
 
-                columns_to_update = ['Deads gained', 'KP gained', 'T5 Kills gained', 'T4 Kills gained']  # DataFrame column names
                 start_row = 2
                 for col_name in columns_to_update:
                     # 1. Find the column index (1-based)
