@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from gspread.utils import rowcol_to_a1
 
 # --- Helper functions ---
 def get_dead_target(power_value, df_dead):
@@ -64,29 +65,96 @@ if uploaded_file:
             st.error("❌ Uploaded file must have a 'Power' column.")
         else:
             # --- Compute targets and scores ---
-            df_upload["Target DKP"] = df_upload["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
-            df_upload["Target Deads"] = df_upload["Power"].apply(lambda x: get_dead_target(x, df_dead))
-            df_upload["Deads rate"] = ((df_upload["Deads gained"] / df_upload["Target Deads"]) * 100).round(2)
-            df_upload["Score"] = (
-                df_upload["T4 Kills gained"] * get_point("T4", df_point) +
-                df_upload["T5 Kills gained"] * get_point("T5", df_point) +
-                df_upload["Deads gained"] * get_point("Dead", df_point)
-            )
-            df_upload["DKP rate"] = ((df_upload["Score"] / df_upload["Target DKP"]) * 100).round(2)
-            df_upload["Rank"] = df_upload["Score"].rank(ascending=False, method="min").astype(int)
+            def make_first_data(df):
+                df["Target DKP"] = df["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
+                df["Target Deads"] = df["Power"].apply(lambda x: get_dead_target(x, df_dead))
+                df["Deads rate"] = ((df["Deads gained"] / df["Target Deads"]) * 100).round(2)
+                df["Score"] = (
+                    df["T4 Kills gained"] * get_point("T4", df_point) +
+                    df["T5 Kills gained"] * get_point("T5", df_point) +
+                    df["Deads gained"] * get_point("Dead", df_point)
+                )
+                df["DKP rate"] = ((df["Score"] / df["Target DKP"]) * 100).round(2)
+                df["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
 
-            # --- Prepare target sheet ---
-            sheet_name = "data"
-            try:
+                return df
+
+            def compute_kpi(df):
+                df["Deads rate"] = ((df["Deads gained"] / df["Target Deads"]) * 100).round(2)
+                df["Score"] = (
+                    df["T4 Kills gained"] * get_point("T4", df_point) +
+                    df["T5 Kills gained"] * get_point("T5", df_point) +
+                    df["Deads gained"] * get_point("Dead", df_point)
+                )
+                df["DKP rate"] = ((df["Score"] / df["Target DKP"]) * 100).round(2)
+                df["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
+
+                return df
+
+            st.subheader("Actions")
+            row1_col1, row1_col2 = st.columns(2)
+            if row1_col1.button("Create first data"):
+                sheet_name = "data"
                 sheet = spreadsheet.worksheet(sheet_name)
-                sheet.clear()  # Optional: clear old data before writing
-            except gspread.exceptions.WorksheetNotFound:
-                sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+                df_final = make_first_data(df_upload)
+                sheet.clear()
+                sheet.update(df_to_gspread(df_final))
+                st.success("✅ First data created successfully!")
+            
+            row2_col1, row2_col2 = st.columns(2)
+            if row2_col1.button("Merge data"):
+                try:
+                    sheet = spreadsheet.worksheet("data")
+                    df_old = pd.DataFrame(sheet.get_all_records())
+                except gspread.exceptions.WorksheetNotFound:
+                    st.error("❌ First data sheet not found. Please create first data first.")
+                    st.stop()
+                
+                df_old["ID"] = df_old["ID"].astype(str)
+                df_upload["ID"] = df_upload["ID"].astype(str)
 
-            # --- Write DataFrame safely ---
-            data_to_write = df_to_gspread(df_upload)
-            sheet.update(data_to_write)
+                df_updated = df_old.copy()
+                updated_ids = []
 
-            st.success(f"✅ Uploaded data copied successfully to Google Sheet tab '{sheet_name}'!")
+                for idx, row in df_upload.iterrows():
+                    uid = row["ID"]
+                    if uid in df_updated["ID"].values:
+                        df_updated.loc[df_updated["ID"] == uid, df_upload.columns] = row[df_upload.columns]
+                        updated_ids.append(uid)
+                
+                sheet.update(df_to_gspread(df_updated))
+                st.success("✅ Existing IDs updated")
+
+                columns_to_update = ['Deads gained', 'KP gained', 'T5 Kills gained', 'T4 Kills gained']  # DataFrame column names
+                start_row = 2
+                for col_name in columns_to_update:
+                    # 1. Find the column index (1-based)
+                    col_index = df_upload.columns.get_loc(col_name) + 1
+                    
+                    # 2. Convert to column letter
+                    col_letter = rowcol_to_a1(1, col_index)[:-1]  # 'A', 'B', ...
+                    
+                    # 3. Prepare the data (list of lists)
+                    data_to_update = [[v] for v in df_upload[col_name].tolist()]
+                    
+                    # 4. Build range (from start_row to end_row)
+                    end_row = start_row + len(data_to_update) - 1
+                    cell_range = f"{col_letter}{start_row}:{col_letter}{end_row}"
+                    
+                    # 5. Update the sheet
+                    sheet.update(cell_range, data_to_update)
+
+                try:
+                    sheet = spreadsheet.worksheet("data")
+                    df_new = pd.DataFrame(sheet.get_all_records())
+                except gspread.exceptions.WorksheetNotFound:
+                    st.error("❌ First data sheet not found. Please create first data first.")
+                    st.stop()
+                
+                df_final = compute_kpi(df_new)
+                sheet.clear()
+                sheet.update(df_to_gspread(df_final))
+                st.success("✅ New data update successfully!")
+
     else:
         st.error("The uploaded Excel file does not contain a sheet named 'current'.")
