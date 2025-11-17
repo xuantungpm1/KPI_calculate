@@ -110,38 +110,21 @@ if uploaded_file:
                     st.error("❌ First data sheet not found. Please create first data first.")
                     st.stop()
                 
-                df_old["ID"] = df_old["ID"].astype(str)
-                df_upload["ID"] = df_upload["ID"].astype(str)
+                columns_to_update = ['Deads gained', 'KP gained', 'T5 Kills gained', 'T4 Kills gained']
 
-                df_updated = df_old.copy()
-
-                columns_to_update = ['Deads gained', 'KP gained', 'T5 Kills gained', 'T4 Kills gained']  # DataFrame column names
+                # Convert IDs to str and strip spaces
+                df_upload["ID"] = df_upload["ID"].astype(str).str.strip()
+                sheet_data = pd.DataFrame(sheet.get_all_records())
+                sheet_data["ID"] = sheet_data["ID"].astype(str).str.strip()
 
                 for idx, row in df_upload.iterrows():
                     uid = row["ID"]
-                    if uid in df_updated["ID"].values:
-                        df_updated.loc[df_updated["ID"] == uid, columns_to_update] = row[columns_to_update]
-                
-                sheet.update(df_to_gspread(df_updated))
-                st.success("✅ Existing IDs updated")
-
-                start_row = 2
-                for col_name in columns_to_update:
-                    # 1. Find the column index (1-based)
-                    col_index = df_upload.columns.get_loc(col_name) + 1
-                    
-                    # 2. Convert to column letter
-                    col_letter = rowcol_to_a1(1, col_index)[:-1]  # 'A', 'B', ...
-                    
-                    # 3. Prepare the data (list of lists)
-                    data_to_update = [[v] for v in df_upload[col_name].tolist()]
-                    
-                    # 4. Build range (from start_row to end_row)
-                    end_row = start_row + len(data_to_update) - 1
-                    cell_range = f"{col_letter}{start_row}:{col_letter}{end_row}"
-                    
-                    # 5. Update the sheet
-                    sheet.update(cell_range, data_to_update)
+                    if uid in sheet_data["ID"].values:
+                        # Find the row index in the sheet (1-based for Google Sheets)
+                        sheet_row = sheet_data.index[sheet_data["ID"] == uid][0] + 2  # +2 because header is row 1
+                        for col_name in columns_to_update:
+                            col_index = sheet_data.columns.get_loc(col_name) + 1  # 1-based
+                            sheet.update_cell(sheet_row, col_index, row[col_name])
 
                 try:
                     sheet = spreadsheet.worksheet("data")
