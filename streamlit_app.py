@@ -46,7 +46,6 @@ if uploaded_file:
         scopes=scope
     )
     client = gspread.authorize(creds)
-
     spreadsheet = client.open("KD3270 data sheet")
 
     # --- Read parameter tables ---
@@ -58,27 +57,13 @@ if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     if "current" in xls.sheet_names:
         df_upload = pd.read_excel(uploaded_file, sheet_name="current")
-        st.subheader("📄 Uploaded Data Preview")
+        df_first = pd.read_excel(uploaded_file, sheet_name="first")
+        st.subheader("📄 Uploaded Current Data Preview")
         st.dataframe(df_upload)
 
         if "Power" not in df_upload.columns:
             st.error("❌ Uploaded file must have a 'Power' column.")
         else:
-            # --- Compute targets and scores ---
-            def make_first_data(df):
-                df["Target DKP"] = df["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
-                df["Target Deads"] = df["Power"].apply(lambda x: get_dead_target(x, df_dead))
-                df["Deads rate"] = ((df["Deads gained"] / df["Target Deads"]) * 100).round(2)
-                df["Score"] = (
-                    df["T4 Kills gained"] * get_point("T4", df_point) +
-                    df["T5 Kills gained"] * get_point("T5", df_point) +
-                    df["Deads gained"] * get_point("Dead", df_point)
-                )
-                df["DKP rate"] = ((df["Score"] / df["Target DKP"]) * 100).round(2)
-                df["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
-
-                return df
-
             def compute_kpi(df):
                 df["Deads rate"] = ((df["Deads gained"] / df["Target Deads"]) * 100).round(2)
                 df["Score"] = (
@@ -91,16 +76,7 @@ if uploaded_file:
 
                 return df
 
-            st.subheader("Actions")
-            row1_col1, row1_col2 = st.columns(2)
-            if row1_col1.button("Create first data"):
-                sheet_name = "data"
-                sheet = spreadsheet.worksheet(sheet_name)
-                df_final = make_first_data(df_upload)
-                sheet.clear()
-                sheet.update(df_to_gspread(df_final))
-                st.success("✅ First data created successfully!")
-            
+            st.subheader("Actions")          
             row2_col1, row2_col2 = st.columns(2)
             if row2_col1.button("Merge data"):
                 try:
@@ -139,5 +115,40 @@ if uploaded_file:
                 sheet.update(df_to_gspread(df_final))
                 st.success("✅ New data update successfully!")
 
+    else:
+        st.error("The uploaded Excel file does not contain a sheet named 'current'.")
+    
+    if "first" in xls.sheet_names:
+        df_upload = pd.read_excel(uploaded_file, sheet_name="first")
+        st.subheader("📄 Uploaded First Data Preview")
+        st.dataframe(df_upload)
+
+        if "Power" not in df_upload.columns:
+            st.error("❌ Uploaded file must have a 'Power' column.")
+        else:
+            # --- Compute targets and scores ---
+            def make_first_data(df):
+                df["Target DKP"] = df["Power"].apply(lambda x: get_dkp_target(x, df_dkp))
+                df["Target Deads"] = df["Power"].apply(lambda x: get_dead_target(x, df_dead))
+                df["Deads rate"] = ((df["Deads gained"] / df["Target Deads"]) * 100).round(2)
+                df["Score"] = (
+                    df["T4 Kills gained"] * get_point("T4", df_point) +
+                    df["T5 Kills gained"] * get_point("T5", df_point) +
+                    df["Deads gained"] * get_point("Dead", df_point)
+                )
+                df["DKP rate"] = ((df["Score"] / df["Target DKP"]) * 100).round(2)
+                df["Rank"] = df["Score"].rank(ascending=False, method="min").astype(int)
+
+                return df
+
+            st.subheader("Actions")
+            row1_col1, row1_col2 = st.columns(2)
+            if row1_col1.button("Create first data"):
+                sheet_name = "data"
+                sheet = spreadsheet.worksheet(sheet_name)
+                df_final = make_first_data(df_upload)
+                sheet.clear()
+                sheet.update(df_to_gspread(df_final))
+                st.success("✅ First data created successfully!")
     else:
         st.error("The uploaded Excel file does not contain a sheet named 'current'.")
