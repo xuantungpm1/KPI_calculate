@@ -112,33 +112,20 @@ if uploaded_file:
                 
                 columns_to_update = ['Deads gained', 'KP gained', 'T5 Kills gained', 'T4 Kills gained']
 
-                # Convert IDs to str and strip spaces
+                # Convert IDs
                 df_upload["ID"] = df_upload["ID"].astype(str).str.strip()
-                sheet_data = pd.DataFrame(sheet.get_all_records())
-                sheet_data["ID"] = sheet_data["ID"].astype(str).str.strip()
+                df_old = pd.DataFrame(sheet.get_all_records())
+                df_old["ID"] = df_old["ID"].astype(str).str.strip()
 
-                for col_name in columns_to_update:
-                    col_index = sheet_data.columns.get_loc(col_name) + 1  # 1-based
-                    values_to_update = []
+                # Merge only specific columns
+                for col in columns_to_update:
+                    df_old[col] = df_old["ID"].map(
+                        df_upload.set_index("ID")[col]
+                    ).fillna(df_old[col])
 
-                    for idx, row in sheet_data.iterrows():
-                        uid = row["ID"]
-                        if uid in df_upload["ID"].values:
-                            # Get the new value from uploaded file
-                            new_val = df_upload.loc[df_upload["ID"] == uid, col_name].values[0]
-                            values_to_update.append([new_val])
-                        else:
-                            # Keep old value
-                            values_to_update.append([row[col_name]])
-
-                    # Determine range (column letter + rows)
-                    col_letter = gspread.utils.rowcol_to_a1(1, col_index)[:-1]
-                    start_row = 2
-                    end_row = start_row + len(values_to_update) - 1
-                    cell_range = f"{col_letter}{start_row}:{col_letter}{end_row}"
-
-                    # Update entire column at once
-                    sheet.update(cell_range, values_to_update)
+                # Push back to Google Sheet
+                sheet.clear()
+                sheet.update(df_to_gspread(df_old))
 
                 try:
                     sheet = spreadsheet.worksheet("data")
